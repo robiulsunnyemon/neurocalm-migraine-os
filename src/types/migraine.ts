@@ -27,6 +27,13 @@ export type MedicationCategory =
   | "preventive"
   | "other";
 
+export interface CustomMedication {
+  id: string;
+  name: string;
+  dosage?: string;
+  category: MedicationCategory;
+}
+
 export interface DailyLog {
   id: string; // YYYY-MM-DD
   date: string; // YYYY-MM-DD
@@ -51,6 +58,7 @@ export interface MigraineAttack {
   locations: PainLocation[];
   symptoms: MigraineSymptom[];
   voiceTranscript?: string;
+  parsedBy?: "firebase_ai" | "offline_nlp";
   updatedAt: string;
   synced: boolean;
 }
@@ -85,6 +93,8 @@ export interface UserPreferences {
   nsaidMonthlyLimit: number;
   latitude?: number;
   longitude?: number;
+  locationLabel?: string;
   pressureAlertEnabled: boolean;
   pressureDropThresholdHpa: number;
+  customTriggers: string[];
 }

@@ -8,14 +8,28 @@ export interface ThresholdInsight {
   summary: string;
 }
 
+function getPreviousDateKey(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return dt.toISOString().slice(0, 10);
+}
+
 /**
- * Compares Migraine Days against Good (Pain-Free) Days to avoid false positives.
+ * Compares Migraine Days against Good (Pain-Free) Days across:
+ * 1. Physiological & Weather Thresholds (Sleep, Stress, Barometric Drop, Combined)
+ * 2. User's Custom Triggers (same-day and 24-hour lag)
  */
 export function computeThresholdInsights(
   dailyLogs: DailyLog[],
   attacks: MigraineAttack[]
 ): ThresholdInsight[] {
   if (dailyLogs.length < 3) return [];
+
+  const byDate = new Map<string, DailyLog>();
+  for (const log of dailyLogs) {
+    byDate.set(log.date, log);
+  }
 
   const attackDays = new Set(attacks.map((a) => a.dailyLogId));
   const isAttackDay = (d: DailyLog) =>
@@ -52,6 +66,31 @@ export function computeThresholdInsights(
     },
   ];
 
+  // Dynamically include all custom triggers logged by the user (same-day & 24h lag)
+  const triggerSet = new Set<string>();
+  for (const d of dailyLogs) {
+    for (const t of d.triggers ?? []) {
+      triggerSet.add(t);
+    }
+  }
+
+  for (const trig of triggerSet) {
+    const niceName = trig.replace(/_/g, " ");
+    factors.push({
+      label: `Trigger: ${niceName}`,
+      applicable: () => true,
+      predicate: (d) => (d.triggers ?? []).includes(trig),
+    });
+    factors.push({
+      label: `24h Lag: ${niceName} (prev day)`,
+      applicable: (d) => byDate.has(getPreviousDateKey(d.date)),
+      predicate: (d) => {
+        const prev = byDate.get(getPreviousDateKey(d.date));
+        return Boolean(prev && (prev.triggers ?? []).includes(trig));
+      },
+    });
+  }
+
   const insights: ThresholdInsight[] = [];
 
   for (const f of factors) {
@@ -72,12 +111,14 @@ export function computeThresholdInsights(
           )
         : 0;
 
+    if (rateWith === 0 && rateWithout === 0) continue;
+
     insights.push({
       factor: f.label,
       attackRateWithFactor: rateWith,
       attackRateWithoutFactor: rateWithout,
       sampleSize: withFactor.length,
-      summary: `${rateWith}% attack rate on ${f.label} days (vs ${rateWithout}% without).`,
+      summary: `${rateWith}% attack rate with ${f.label} (vs ${rateWithout}% without).`,
     });
   }
 

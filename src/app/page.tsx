@@ -6,19 +6,25 @@ import {
   AlertTriangle,
   Check,
   CloudRain,
+  MapPin,
   Mic,
   MicOff,
   Pill,
+  Plus,
   ShieldAlert,
   Sparkles,
+  Tag,
 } from "lucide-react";
-import { db } from "@/db/dexie";
+import {
+  db,
+  ensureDefaultCustomMeds,
+  getOrCreatePreferences,
+} from "@/db/dexie";
 import { computeMohStatus } from "@/lib/clinical/assessments";
+import { parseVoiceWithFirebaseAI } from "@/lib/firebase/ai";
 import type {
   BaselineStatus,
   MedicationCategory,
-  MigraineSymptom,
-  PainLocation,
 } from "@/types/migraine";
 
 interface WeatherSnapshot {
@@ -65,6 +71,8 @@ export default function BlackoutHomePage() {
     [today]
   );
   const allMeds = useLiveQuery(() => db.medications.toArray(), []) ?? [];
+  const customMeds = useLiveQuery(() => db.customMeds.toArray(), []) ?? [];
+  const prefs = useLiveQuery(() => db.preferences.get("default"), []);
   const todayAttacks =
     useLiveQuery(
       () =>
@@ -76,26 +84,47 @@ export default function BlackoutHomePage() {
 
   useEffect(() => {
     setToday(getTodayKey());
+    void getOrCreatePreferences();
+    void ensureDefaultCustomMeds();
   }, []);
 
   const moh = computeMohStatus(allMeds, today ? today.slice(0, 7) : "");
 
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [listening, setListening] = useState(false);
+  const [parsingVoice, setParsingVoice] = useState(false);
   const [voiceText, setVoiceText] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  const [showAddMed, setShowAddMed] = useState(false);
+  const [newMedName, setNewMedName] = useState("");
+  const [newMedDosage, setNewMedDosage] = useState("");
+  const [newMedCat, setNewMedCat] = useState<MedicationCategory>("triptan");
+
+  const [newTrigger, setNewTrigger] = useState("");
 
   useEffect(() => {
     if (!today) return;
     let active = true;
     async function loadWeather() {
       try {
-        const res = await fetch("/api/weather");
+        const query =
+          prefs?.latitude && prefs?.longitude
+            ? `?lat=${prefs.latitude}&lon=${prefs.longitude}`
+            : "";
+        const res = await fetch(`/api/weather${query}`);
         if (!res.ok) return;
-        const data = (await res.json()) as WeatherSnapshot & { unavailable?: boolean };
-        if (!active || data.unavailable || typeof data.currentPressureHpa !== "number") return;
+        const data = (await res.json()) as WeatherSnapshot & {
+          unavailable?: boolean;
+        };
+        if (
+          !active ||
+          data.unavailable ||
+          typeof data.currentPressureHpa !== "number"
+        ) {
+          return;
+        }
         setWeather(data);
-        // Save pressure to today's log if present or create baseline
         const existing = await db.dailyLogs.get(today);
         if (existing) {
           await db.dailyLogs.update(today, {
@@ -107,15 +136,35 @@ export default function BlackoutHomePage() {
         // Offline - ignore silently
       }
     }
-    loadWeather();
+    void loadWeather();
     return () => {
       active = false;
     };
-  }, [today]);
+  }, [today, prefs?.latitude, prefs?.longitude]);
 
   function flash(msg: string) {
     setFeedback(msg);
-    setTimeout(() => setFeedback(null), 2500);
+    setTimeout(() => setFeedback(null), 3000);
+  }
+
+  function requestUserLocation() {
+    if (!navigator.geolocation) {
+      flash("Geolocation not supported in this browser");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const currentPrefs = await getOrCreatePreferences();
+        await db.preferences.put({
+          ...currentPrefs,
+          latitude: Number(pos.coords.latitude.toFixed(4)),
+          longitude: Number(pos.coords.longitude.toFixed(4)),
+          locationLabel: "Local GPS",
+        });
+        flash("Local barometric pressure enabled");
+      },
+      () => flash("Location permission denied")
+    );
   }
 
   async function setBaseline(status: BaselineStatus) {
@@ -125,12 +174,44 @@ export default function BlackoutHomePage() {
     await db.dailyLogs.put({
       ...(existing ?? { id: today, date: today }),
       baselineStatus: status,
-      barometricPressureHpa: weather?.currentPressureHpa ?? existing?.barometricPressureHpa,
+      barometricPressureHpa:
+        weather?.currentPressureHpa ?? existing?.barometricPressureHpa,
       pressureDelta24h: weather?.delta24hHpa ?? existing?.pressureDelta24h,
       updatedAt: now,
       synced: false,
     });
     flash(`Today marked: ${status.replace("_", " ")}`);
+  }
+
+  async function toggleTodayTrigger(trig: string) {
+    if (!today) return;
+    const now = new Date().toISOString();
+    const existing = await db.dailyLogs.get(today);
+    const current = existing?.triggers ?? [];
+    const next = current.includes(trig)
+      ? current.filter((t) => t !== trig)
+      : [...current, trig];
+
+    await db.dailyLogs.put({
+      ...(existing ?? { id: today, date: today, baselineStatus: "pain_free" }),
+      triggers: next,
+      updatedAt: now,
+      synced: false,
+    });
+  }
+
+  async function addCustomTrigger() {
+    const clean = newTrigger.trim().toLowerCase().replace(/\s+/g, "_");
+    if (!clean) return;
+    const currentPrefs = await getOrCreatePreferences();
+    if (!currentPrefs.customTriggers.includes(clean)) {
+      await db.preferences.put({
+        ...currentPrefs,
+        customTriggers: [...currentPrefs.customTriggers, clean],
+      });
+    }
+    setNewTrigger("");
+    await toggleTodayTrigger(clean);
   }
 
   async function quickLogAttack(pain: number) {
@@ -163,7 +244,8 @@ export default function BlackoutHomePage() {
 
   async function quickLogMedication(
     name: string,
-    category: MedicationCategory
+    category: MedicationCategory,
+    dosage?: string
   ) {
     if (!today) return;
     const now = new Date().toISOString();
@@ -182,36 +264,47 @@ export default function BlackoutHomePage() {
       dailyLogId: today,
       takenAt: now,
       name,
+      dosage,
       category,
       updatedAt: now,
       synced: false,
     });
-    flash(`Logged ${name}`);
+    flash(`Logged ${name}${dosage ? ` ${dosage}` : ""}`);
+  }
+
+  async function addCustomMedication() {
+    if (!newMedName.trim()) return;
+    await db.customMeds.put({
+      id: crypto.randomUUID(),
+      name: newMedName.trim(),
+      dosage: newMedDosage.trim() || undefined,
+      category: newMedCat,
+    });
+    setNewMedName("");
+    setNewMedDosage("");
+    setShowAddMed(false);
+    flash("Added custom medication");
   }
 
   async function parseAndSaveVoice(transcript: string) {
     if (!transcript.trim() || !today) return;
+    setParsingVoice(true);
     try {
-      const res = await fetch("/api/parse-voice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript }),
-      });
-      if (!res.ok) throw new Error("Parse failed");
-      const parsed = (await res.json()) as {
-        peakPain: number;
-        locations: PainLocation[];
-        symptoms: MigraineSymptom[];
-        medication?: { name: string; category: MedicationCategory };
-      };
-
+      const parsed = await parseVoiceWithFirebaseAI(transcript);
       const now = new Date().toISOString();
       const existing = await db.dailyLogs.get(today);
+      const mergedTriggers = Array.from(
+        new Set([...(existing?.triggers ?? []), ...parsed.triggers])
+      );
+
       await db.dailyLogs.put({
         ...(existing ?? { id: today, date: today }),
         baselineStatus: parsed.peakPain >= 7 ? "bedbound" : "functioning",
-        barometricPressureHpa: weather?.currentPressureHpa,
-        pressureDelta24h: weather?.delta24hHpa,
+        sleepHours: parsed.sleepHours ?? existing?.sleepHours,
+        triggers: mergedTriggers,
+        barometricPressureHpa:
+          weather?.currentPressureHpa ?? existing?.barometricPressureHpa,
+        pressureDelta24h: weather?.delta24hHpa ?? existing?.pressureDelta24h,
         updatedAt: now,
         synced: false,
       });
@@ -225,6 +318,7 @@ export default function BlackoutHomePage() {
         locations: parsed.locations,
         symptoms: parsed.symptoms,
         voiceTranscript: transcript,
+        parsedBy: parsed.parsedBy,
         updatedAt: now,
         synced: false,
       });
@@ -236,6 +330,7 @@ export default function BlackoutHomePage() {
           dailyLogId: today,
           takenAt: now,
           name: parsed.medication.name,
+          dosage: parsed.medication.dosage,
           category: parsed.medication.category,
           updatedAt: now,
           synced: false,
@@ -244,12 +339,16 @@ export default function BlackoutHomePage() {
 
       setVoiceText("");
       flash(
-        `Voice saved: Pain ${parsed.peakPain}/10${
+        `${
+          parsed.parsedBy === "firebase_ai" ? "Gemini AI" : "Offline NLP"
+        }: Pain ${parsed.peakPain}/10${
           parsed.medication ? ` + ${parsed.medication.name}` : ""
         }`
       );
     } catch {
       flash("Could not parse voice input");
+    } finally {
+      setParsingVoice(false);
     }
   }
 
@@ -318,31 +417,45 @@ export default function BlackoutHomePage() {
 
   return (
     <div className="space-y-5">
-      {/* Storm & Barometric Alert Banner */}
-      {weather && (
-        <div
-          className={`rounded-xl p-3 border flex items-center justify-between text-xs ${
-            weather.stormAlert
-              ? "bg-[#1a0505] border-[#b91c1c]/60 text-[#fca5a5]/85"
-              : "bg-[#0a0a0a] border-[#261e1a] text-[#a8a29e]"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <CloudRain className="w-4 h-4 text-[#d97706] shrink-0" />
+      {/* Storm & Barometric Alert Banner with Auto-Location */}
+      <div
+        className={`rounded-xl p-3 border flex items-center justify-between text-xs ${
+          weather?.stormAlert
+            ? "bg-[#1a0505] border-[#b91c1c]/60 text-[#fca5a5]/85"
+            : "bg-[#0a0a0a] border-[#261e1a] text-[#a8a29e]"
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <CloudRain className="w-4 h-4 text-[#d97706] shrink-0" />
+          {weather ? (
             <div>
               <span className="font-medium text-[#d4a373]">
                 {weather.currentPressureHpa} hPa
               </span>{" "}
-              (24h: {weather.delta24hHpa > 0 ? `+${weather.delta24hHpa}` : weather.delta24hHpa} hPa)
+              (24h:{" "}
+              {weather.delta24hHpa > 0
+                ? `+${weather.delta24hHpa}`
+                : weather.delta24hHpa}{" "}
+              hPa)
               {weather.stormAlert && (
                 <p className="text-[11px] text-[#f87171]/80 mt-0.5">
-                  Pressure drop ({weather.maxDropNext24hHpa} hPa) forecast in 24h — keep meds ready.
+                  Pressure drop ({weather.maxDropNext24hHpa} hPa) forecast in 24h.
                 </p>
               )}
             </div>
-          </div>
+          ) : (
+            <span>Barometric pressure syncing...</span>
+          )}
         </div>
-      )}
+        <button
+          onClick={requestUserLocation}
+          className="flex items-center gap-1 px-2 py-1 rounded bg-black border border-[#261e1a] text-[10px] text-[#d4a373] hover:border-[#d97706]"
+          title="Use your local GPS coordinates for pressure"
+        >
+          <MapPin className="w-3 h-3 text-[#d97706]" />
+          <span>{prefs?.locationLabel ?? "Set GPS"}</span>
+        </button>
+      </div>
 
       {feedback && (
         <div className="rounded-lg bg-[#14110f] border border-[#d97706]/50 px-3 py-2 text-xs text-[#d97706] flex items-center gap-2">
@@ -351,18 +464,21 @@ export default function BlackoutHomePage() {
         </div>
       )}
 
-      {/* Killer Feature 1: Eyes-Closed Voice-to-Log */}
+      {/* Killer Feature 1: Firebase AI Logic Voice-to-Log */}
       <section className="rounded-2xl bg-[#0a0a0a] border border-[#261e1a] p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h1 className="text-sm font-semibold text-[#d4a373] flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-[#d97706]" />
-            3-Second Voice Log
+            Gemini AI Voice Log
           </h1>
-          <span className="text-[11px] text-[#78716c]">Eyes-closed capture</span>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-[#14110f] border border-[#261e1a] text-[#d97706]">
+            Firebase AI Logic
+          </span>
         </div>
 
         <button
           onClick={startVoiceCapture}
+          disabled={parsingVoice}
           className={`w-full py-5 rounded-xl border flex flex-col items-center justify-center gap-2 transition ${
             listening
               ? "bg-[#1a0505] border-[#b91c1c] text-[#ef4444]"
@@ -374,10 +490,12 @@ export default function BlackoutHomePage() {
           ) : (
             <Mic className="w-7 h-7 text-[#d97706]" />
           )}
-          <span className="text-xs font-medium">
-            {listening
-              ? "Listening... speak pain, side, & meds"
-              : "Tap & say: “Pain 7, left side, nausea, took sumatriptan”"}
+          <span className="text-xs font-medium px-3 text-center">
+            {parsingVoice
+              ? "Parsing with Gemini AI..."
+              : listening
+              ? "Listening... speak naturally"
+              : "Tap & say anything: “Skipped lunch, pain 7 behind left eye, took sumatriptan”"}
           </span>
         </button>
 
@@ -386,14 +504,15 @@ export default function BlackoutHomePage() {
             type="text"
             value={voiceText}
             onChange={(e) => setVoiceText(e.target.value)}
-            placeholder="Or type quick note (e.g. pain 8, aura, nurtec)..."
+            placeholder="Or type naturally (English / বাংলা)..."
             className="flex-1 bg-black border border-[#261e1a] rounded-lg px-3 py-2 text-xs text-[#e7d8c9] placeholder:text-[#57534e] focus:outline-none focus:border-[#d97706]"
           />
           <button
             onClick={() => void parseAndSaveVoice(voiceText)}
+            disabled={parsingVoice}
             className="px-3 py-2 rounded-lg bg-[#14110f] border border-[#261e1a] text-xs text-[#d97706] hover:border-[#d97706]"
           >
-            Save
+            {parsingVoice ? "..." : "AI Save"}
           </button>
         </div>
       </section>
@@ -431,7 +550,6 @@ export default function BlackoutHomePage() {
           })}
         </div>
 
-        {/* 1-Tap Attack Severity Spikes */}
         <div className="pt-2 border-t border-[#261e1a] flex items-center justify-between gap-2">
           <span className="text-[11px] text-[#78716c]">Quick Spike:</span>
           <div className="flex gap-2">
@@ -448,7 +566,48 @@ export default function BlackoutHomePage() {
         </div>
       </section>
 
-      {/* Medication Safety Guardrail (MOH Counter) */}
+      {/* Custom Triggers Quick-Tap */}
+      <section className="rounded-2xl bg-[#0a0a0a] border border-[#261e1a] p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-[#d4a373] flex items-center gap-1.5">
+          <Tag className="w-4 h-4 text-[#d97706]" />
+          Today&apos;s Triggers
+        </h2>
+        <div className="flex flex-wrap gap-1.5">
+          {(prefs?.customTriggers ?? []).map((trig) => {
+            const active = (dailyLog?.triggers ?? []).includes(trig);
+            return (
+              <button
+                key={trig}
+                onClick={() => void toggleTodayTrigger(trig)}
+                className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${
+                  active
+                    ? "bg-[#14110f] border-[#d97706] text-[#d97706]"
+                    : "bg-black border-[#261e1a] text-[#a8a29e]"
+                }`}
+              >
+                {trig.replace(/_/g, " ")}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newTrigger}
+            onChange={(e) => setNewTrigger(e.target.value)}
+            placeholder="Add custom trigger (e.g. chocolate)..."
+            className="flex-1 bg-black border border-[#261e1a] rounded-lg px-3 py-1.5 text-xs text-[#e7d8c9]"
+          />
+          <button
+            onClick={() => void addCustomTrigger()}
+            className="px-3 py-1.5 rounded-lg bg-black border border-[#261e1a] text-xs text-[#d4a373] hover:border-[#d97706]"
+          >
+            + Add
+          </button>
+        </div>
+      </section>
+
+      {/* Medication Safety Guardrail (Custom Meds + MOH Counter) */}
       <section className="rounded-2xl bg-[#0a0a0a] border border-[#261e1a] p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-[#d4a373] flex items-center gap-1.5">
@@ -484,25 +643,66 @@ export default function BlackoutHomePage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {customMeds.map((med) => (
+            <button
+              key={med.id}
+              onClick={() =>
+                void quickLogMedication(med.name, med.category, med.dosage)
+              }
+              className="text-xs px-3 py-1.5 rounded-lg bg-black border border-[#261e1a] hover:border-[#d97706]"
+            >
+              + {med.name} {med.dosage ? `(${med.dosage})` : ""}
+            </button>
+          ))}
           <button
-            onClick={() => void quickLogMedication("Sumatriptan", "triptan")}
-            className="text-xs px-3 py-1.5 rounded-lg bg-black border border-[#261e1a] hover:border-[#d97706]"
+            onClick={() => setShowAddMed(!showAddMed)}
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-[#14110f] border border-[#261e1a] text-[#d97706] flex items-center gap-1"
           >
-            + Sumatriptan
-          </button>
-          <button
-            onClick={() => void quickLogMedication("Nurtec ODT", "gepant_cgrp")}
-            className="text-xs px-3 py-1.5 rounded-lg bg-black border border-[#261e1a] hover:border-[#d97706]"
-          >
-            + Nurtec (CGRP)
-          </button>
-          <button
-            onClick={() => void quickLogMedication("Ibuprofen", "nsaid")}
-            className="text-xs px-3 py-1.5 rounded-lg bg-black border border-[#261e1a] hover:border-[#d97706]"
-          >
-            + Ibuprofen
+            <Plus className="w-3.5 h-3.5" /> Custom Med
           </button>
         </div>
+
+        {showAddMed && (
+          <div className="p-3 rounded-xl bg-black border border-[#261e1a] space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                placeholder="Med name (e.g. Ubrelvy)"
+                value={newMedName}
+                onChange={(e) => setNewMedName(e.target.value)}
+                className="bg-[#0a0a0a] border border-[#261e1a] rounded-lg px-2.5 py-1.5 text-xs text-[#e7d8c9]"
+              />
+              <input
+                type="text"
+                placeholder="Dosage (e.g. 100mg)"
+                value={newMedDosage}
+                onChange={(e) => setNewMedDosage(e.target.value)}
+                className="bg-[#0a0a0a] border border-[#261e1a] rounded-lg px-2.5 py-1.5 text-xs text-[#e7d8c9]"
+              />
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={newMedCat}
+                onChange={(e) =>
+                  setNewMedCat(e.target.value as MedicationCategory)
+                }
+                className="flex-1 bg-[#0a0a0a] border border-[#261e1a] rounded-lg px-2.5 py-1.5 text-xs text-[#e7d8c9]"
+              >
+                <option value="triptan">Triptan</option>
+                <option value="gepant_cgrp">Gepant / CGRP</option>
+                <option value="nsaid">NSAID</option>
+                <option value="preventive">Preventive</option>
+                <option value="other">Other</option>
+              </select>
+              <button
+                onClick={() => void addCustomMedication()}
+                className="px-3 py-1.5 rounded-lg bg-[#14110f] border border-[#d97706]/50 text-xs text-[#d97706]"
+              >
+                Save Med
+              </button>
+            </div>
+          </div>
+        )}
 
         {moh.triptanWarning && (
           <p className="text-[11px] text-[#fca5a5]/80 flex items-center gap-1.5">

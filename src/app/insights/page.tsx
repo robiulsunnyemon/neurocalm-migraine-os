@@ -2,9 +2,10 @@
 
 import React, { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Activity, Check } from "lucide-react";
+import { Activity, Check, Sparkles } from "lucide-react";
 import { db } from "@/db/dexie";
 import { computeThresholdInsights } from "@/lib/analytics/correlations";
+import { generatePatternSummaryWithAI } from "@/lib/firebase/ai";
 
 function getTodayKey(): string {
   const d = new Date();
@@ -23,6 +24,9 @@ export default function InsightsPage() {
   const [stress, setStress] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [saved, setSaved] = useState(false);
 
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [loadingAi, setLoadingAi] = useState(false);
+
   React.useEffect(() => {
     setToday(getTodayKey());
   }, []);
@@ -39,6 +43,20 @@ export default function InsightsPage() {
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  }
+
+  async function runAiSummary() {
+    setLoadingAi(true);
+    const payload =
+      insights.length > 0
+        ? insights.slice(0, 6).map((i) => i.summary).join("\n")
+        : `Total logged days: ${dailyLogs.length}, Total attacks: ${attacks.length}`;
+    const res = await generatePatternSummaryWithAI(payload);
+    setAiSummary(
+      res ??
+        "Enable Firebase AI Logic in your Firebase Console to generate personalized Gemini summaries."
+    );
+    setLoadingAi(false);
   }
 
   return (
@@ -72,7 +90,9 @@ export default function InsightsPage() {
             </label>
             <select
               value={stress}
-              onChange={(e) => setStress(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
+              onChange={(e) =>
+                setStress(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)
+              }
               className="w-full bg-black border border-[#261e1a] rounded-lg px-3 py-2 text-xs text-[#e7d8c9]"
             >
               {[1, 2, 3, 4, 5].map((n) => (
@@ -94,14 +114,30 @@ export default function InsightsPage() {
       </section>
 
       <section className="rounded-2xl bg-[#0a0a0a] border border-[#261e1a] p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-[#d4a373] flex items-center gap-1.5">
-          <Activity className="w-4 h-4 text-[#d97706]" />
-          Threshold & Trigger Correlations
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-[#d4a373] flex items-center gap-1.5">
+            <Activity className="w-4 h-4 text-[#d97706]" />
+            Threshold & 24h Lag Correlations
+          </h2>
+          <button
+            onClick={() => void runAiSummary()}
+            disabled={loadingAi}
+            className="text-[11px] px-2.5 py-1 rounded-lg bg-[#14110f] border border-[#d97706]/50 text-[#d97706] flex items-center gap-1"
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>{loadingAi ? "Thinking..." : "Gemini Summary"}</span>
+          </button>
+        </div>
+
+        {aiSummary && (
+          <div className="p-3 rounded-xl bg-[#14110f] border border-[#d97706]/40 text-xs text-[#e7d8c9] whitespace-pre-line">
+            {aiSummary}
+          </div>
+        )}
 
         {insights.length === 0 ? (
           <p className="text-xs text-[#78716c]">
-            Log at least 3 days (including pain-free days) with sleep, stress, or pressure data to unlock multi-factor threshold insights.
+            Log at least 3 days (including pain-free days) with sleep, stress, triggers, or pressure data to unlock multi-factor & 24h lag insights.
           </p>
         ) : (
           <div className="space-y-2.5">
@@ -111,7 +147,9 @@ export default function InsightsPage() {
                 className="p-3 rounded-xl bg-black border border-[#261e1a] space-y-1.5"
               >
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-[#e7d8c9]">{ins.factor}</span>
+                  <span className="font-medium text-[#e7d8c9]">
+                    {ins.factor}
+                  </span>
                   <span className="text-[#d97706]">
                     {ins.attackRateWithFactor}% attack rate
                   </span>
