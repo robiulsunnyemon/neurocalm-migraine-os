@@ -92,8 +92,8 @@ export default function BlackoutHomePage() {
       try {
         const res = await fetch("/api/weather");
         if (!res.ok) return;
-        const data = (await res.json()) as WeatherSnapshot;
-        if (!active) return;
+        const data = (await res.json()) as WeatherSnapshot & { unavailable?: boolean };
+        if (!active || data.unavailable || typeof data.currentPressureHpa !== "number") return;
         setWeather(data);
         // Save pressure to today's log if present or create baseline
         const existing = await db.dailyLogs.get(today);

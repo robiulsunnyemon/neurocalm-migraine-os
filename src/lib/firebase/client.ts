@@ -1,8 +1,9 @@
 import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, type Auth } from "firebase/auth";
 import {
-  enableMultiTabIndexedDbPersistence,
-  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   type Firestore,
 } from "firebase/firestore";
 
@@ -25,7 +26,6 @@ export const isFirebaseConfigured = Boolean(
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let firestore: Firestore | null = null;
-let persistenceAttempted = false;
 
 export function getFirebaseClient(): {
   app: FirebaseApp | null;
@@ -42,14 +42,11 @@ export function getFirebaseClient(): {
   if (!app) {
     app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
     auth = getAuth(app);
-    firestore = getFirestore(app);
-
-    if (!persistenceAttempted && firestore) {
-      persistenceAttempted = true;
-      enableMultiTabIndexedDbPersistence(firestore).catch(() => {
-        // Ignore if another tab holds persistence or browser doesn't support it
-      });
-    }
+    firestore = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
   }
 
   return { app, auth, firestore, googleProvider };
