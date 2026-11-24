@@ -57,6 +57,12 @@ interface SpeechRecognitionLike {
   stop: () => void;
 }
 
+function formatTriggerLabel(trig: string): string {
+  return trig
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function getTodayKey(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
@@ -180,7 +186,7 @@ export default function BlackoutHomePage() {
       updatedAt: now,
       synced: false,
     });
-    flash(`Today marked: ${status.replace("_", " ")}`);
+    flash(`Logged: ${formatTriggerLabel(status)}`);
   }
 
   async function toggleTodayTrigger(trig: string) {
@@ -392,25 +398,25 @@ export default function BlackoutHomePage() {
     {
       id: "pain_free",
       label: "Pain-Free",
-      sub: "Good baseline day",
+      sub: "No headache today",
       accent: "border-[#15803d]/50 text-[#4ade80]/80",
     },
     {
       id: "background",
-      label: "Background",
-      sub: "Mild chronic noise",
+      label: "Mild / Background",
+      sub: "Low pain, manageable",
       accent: "border-[#78716c]/50 text-[#d4a373]",
     },
     {
       id: "functioning",
-      label: "Functioning",
-      sub: "Moderate migraine",
+      label: "Moderate",
+      sub: "Painful, still functioning",
       accent: "border-[#d97706]/60 text-[#f59e0b]/90",
     },
     {
       id: "bedbound",
-      label: "Bedbound",
-      sub: "Severe / dark room",
+      label: "Severe / Bedbound",
+      sub: "Need dark room",
       accent: "border-[#b91c1c]/70 text-[#ef4444]/90",
     },
   ];
@@ -430,21 +436,18 @@ export default function BlackoutHomePage() {
           {weather ? (
             <div>
               <span className="font-medium text-[#d4a373]">
-                {weather.currentPressureHpa} hPa
-              </span>{" "}
-              (24h:{" "}
-              {weather.delta24hHpa > 0
-                ? `+${weather.delta24hHpa}`
-                : weather.delta24hHpa}{" "}
-              hPa)
+                {weather.stormAlert
+                  ? `Pressure Drop Ahead (${weather.maxDropNext24hHpa} hPa)`
+                  : `Steady Pressure (${weather.currentPressureHpa} hPa)`}
+              </span>
               {weather.stormAlert && (
                 <p className="text-[11px] text-[#f87171]/80 mt-0.5">
-                  Pressure drop ({weather.maxDropNext24hHpa} hPa) forecast in 24h.
+                  Higher migraine risk in 24h • Hydrate &amp; keep meds close
                 </p>
               )}
             </div>
           ) : (
-            <span>Barometric pressure syncing...</span>
+            <span>Checking local pressure...</span>
           )}
         </div>
         <button
@@ -464,22 +467,22 @@ export default function BlackoutHomePage() {
         </div>
       )}
 
-      {/* Killer Feature 1: Firebase AI Logic Voice-to-Log */}
+      {/* Killer Feature 1: Hands-Free Voice-to-Log */}
       <section className="rounded-2xl bg-[#0a0a0a] border border-[#261e1a] p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h1 className="text-sm font-semibold text-[#d4a373] flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-[#d97706]" />
-            Gemini AI Voice Log
+            Hands-Free Voice Log
           </h1>
           <span className="text-[10px] px-2 py-0.5 rounded bg-[#14110f] border border-[#261e1a] text-[#d97706]">
-            Firebase AI Logic
+            Smart Parse
           </span>
         </div>
 
         <button
           onClick={startVoiceCapture}
           disabled={parsingVoice}
-          className={`w-full py-5 rounded-xl border flex flex-col items-center justify-center gap-2 transition ${
+          className={`w-full py-5 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition ${
             listening
               ? "bg-[#1a0505] border-[#b91c1c] text-[#ef4444]"
               : "bg-black border-[#261e1a] hover:border-[#d97706]/60 text-[#d4a373]"
@@ -490,13 +493,18 @@ export default function BlackoutHomePage() {
           ) : (
             <Mic className="w-7 h-7 text-[#d97706]" />
           )}
-          <span className="text-xs font-medium px-3 text-center">
+          <span className="text-xs font-semibold">
             {parsingVoice
-              ? "Parsing with Gemini AI..."
+              ? "Parsing your log..."
               : listening
-              ? "Listening... speak naturally"
-              : "Tap & say anything: “Skipped lunch, pain 7 behind left eye, took sumatriptan”"}
+              ? "Listening..."
+              : "Tap & speak"}
           </span>
+          {!listening && !parsingVoice && (
+            <span className="text-[11px] text-[#78716c] px-3 text-center">
+              e.g. &ldquo;Pain 7, left eye, took sumatriptan&rdquo;
+            </span>
+          )}
         </button>
 
         <div className="flex gap-2">
@@ -504,15 +512,15 @@ export default function BlackoutHomePage() {
             type="text"
             value={voiceText}
             onChange={(e) => setVoiceText(e.target.value)}
-            placeholder="Or type naturally (English / বাংলা)..."
+            placeholder="Type what you feel..."
             className="flex-1 bg-black border border-[#261e1a] rounded-lg px-3 py-2 text-xs text-[#e7d8c9] placeholder:text-[#57534e] focus:outline-none focus:border-[#d97706]"
           />
           <button
             onClick={() => void parseAndSaveVoice(voiceText)}
             disabled={parsingVoice}
-            className="px-3 py-2 rounded-lg bg-[#14110f] border border-[#261e1a] text-xs text-[#d97706] hover:border-[#d97706]"
+            className="px-3.5 py-2 rounded-lg bg-[#14110f] border border-[#261e1a] text-xs text-[#d97706] hover:border-[#d97706]"
           >
-            {parsingVoice ? "..." : "AI Save"}
+            {parsingVoice ? "..." : "Log"}
           </button>
         </div>
       </section>
@@ -585,7 +593,7 @@ export default function BlackoutHomePage() {
                     : "bg-black border-[#261e1a] text-[#a8a29e]"
                 }`}
               >
-                {trig.replace(/_/g, " ")}
+                {formatTriggerLabel(trig)}
               </button>
             );
           })}
@@ -595,7 +603,7 @@ export default function BlackoutHomePage() {
             type="text"
             value={newTrigger}
             onChange={(e) => setNewTrigger(e.target.value)}
-            placeholder="Add custom trigger (e.g. chocolate)..."
+            placeholder="Add trigger (e.g. chocolate)..."
             className="flex-1 bg-black border border-[#261e1a] rounded-lg px-3 py-1.5 text-xs text-[#e7d8c9]"
           />
           <button
@@ -612,11 +620,11 @@ export default function BlackoutHomePage() {
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-[#d4a373] flex items-center gap-1.5">
             <Pill className="w-4 h-4 text-[#d97706]" />
-            Medication Safety (This Month)
+            Monthly Med Limits
           </h2>
           {moh.triptanWarning && (
             <span className="text-[10px] px-2 py-0.5 rounded bg-[#1a0505] border border-[#b91c1c] text-[#fca5a5] flex items-center gap-1">
-              <ShieldAlert className="w-3 h-3" /> MOH Limit Near
+              <ShieldAlert className="w-3 h-3" /> Near Limit
             </span>
           )}
         </div>
@@ -707,7 +715,7 @@ export default function BlackoutHomePage() {
         {moh.triptanWarning && (
           <p className="text-[11px] text-[#fca5a5]/80 flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-            Using triptans &gt;10 days/month can trigger Medication Overuse Headache.
+            10+ triptan days/mo can cause rebound headaches.
           </p>
         )}
       </section>

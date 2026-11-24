@@ -136,7 +136,7 @@ export default function CalendarPage() {
 
         {dailyLogs.length === 0 ? (
           <p className="text-xs text-[#78716c]">
-            No days logged yet. Tap a baseline status on the Log tab to start.
+            No logs yet — tap today&apos;s status on the Log tab to start your map.
           </p>
         ) : (
           <div className="space-y-2">
@@ -177,10 +177,10 @@ export default function CalendarPage() {
       <section className="rounded-2xl bg-[#0a0a0a] border border-[#261e1a] p-4 space-y-3">
         <div>
           <h2 className="text-sm font-semibold text-[#d4a373]">
-            Medication Efficacy (Prior-Auth Proof)
+            Did Your Meds Work?
           </h2>
           <p className="text-[11px] text-[#78716c] mt-0.5">
-            Mark whether a medication worked — failed therapies appear on your Insurance PDF.
+            Helps prove failed therapies for insurance approvals.
           </p>
         </div>
 

@@ -95,10 +95,10 @@ export default function ReportPage() {
         <div>
           <h1 className="text-sm font-semibold text-[#d4a373] flex items-center gap-1.5">
             <FileText className="w-4 h-4 text-[#d97706]" />
-            Neurologist & Insurance PDF Pack
+            Doctor &amp; Insurance Report
           </h1>
           <p className="text-[11px] text-[#78716c] mt-0.5">
-            1-page clinical summary with MIDAS, HIT-6, MOH limits, and failed therapies for Prior Authorization.
+            1-page clinical summary with MIDAS, HIT-6, med limits, and failed therapies.
           </p>
         </div>
 
@@ -107,7 +107,7 @@ export default function ReportPage() {
           className="w-full py-3 rounded-xl bg-[#14110f] border border-[#d97706]/60 text-xs font-semibold text-[#d97706] flex items-center justify-center gap-2 hover:bg-[#1f1914] transition"
         >
           <Download className="w-4 h-4" />
-          <span>Download 1-Page Clinical PDF</span>
+          <span>Export 1-Page PDF</span>
         </button>
       </section>
 
@@ -162,7 +162,7 @@ export default function ReportPage() {
               onClick={() => void saveMidas()}
               className="px-4 py-2 rounded-lg bg-black border border-[#261e1a] text-xs text-[#d4a373] hover:border-[#d97706]"
             >
-              Calculate & Save MIDAS
+              Save MIDAS Score
             </button>
           </div>
         ) : (
@@ -194,7 +194,7 @@ export default function ReportPage() {
               onClick={() => void saveHit6()}
               className="px-4 py-2 rounded-lg bg-black border border-[#261e1a] text-xs text-[#d4a373] hover:border-[#d97706]"
             >
-              Calculate & Save HIT-6
+              Save HIT-6 Score
             </button>
           </div>
         )}

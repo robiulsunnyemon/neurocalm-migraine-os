@@ -63,10 +63,10 @@ export default function InsightsPage() {
     <div className="space-y-5">
       <section className="rounded-2xl bg-[#0a0a0a] border border-[#261e1a] p-4 space-y-3">
         <h1 className="text-sm font-semibold text-[#d4a373]">
-          Good-Day vs Migraine-Day Context ({today})
+          Daily Sleep &amp; Stress ({today})
         </h1>
         <p className="text-[11px] text-[#78716c]">
-          Log sleep & stress even on pain-free days so the AI avoids false-positive triggers.
+          Log on pain-free days too so patterns stay accurate.
         </p>
 
         <div className="grid grid-cols-2 gap-3">
@@ -117,7 +117,7 @@ export default function InsightsPage() {
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-[#d4a373] flex items-center gap-1.5">
             <Activity className="w-4 h-4 text-[#d97706]" />
-            Threshold & 24h Lag Correlations
+            Your Trigger Patterns
           </h2>
           <button
             onClick={() => void runAiSummary()}
