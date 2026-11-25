@@ -43,15 +43,48 @@ export function MobileMockupFrame({
   const current = interactive ? activeTab : screen;
 
   return (
-    <div className="mx-auto w-[300px] sm:w-[320px] rounded-[2.6rem] bg-[#080706] border-[3px] border-[#261e1a] p-2.5 shadow-2xl shadow-black/90 select-none">
-      {/* Inner OLED Display */}
-      <div className="rounded-[2.1rem] bg-black border border-[#1c1613] overflow-hidden flex flex-col min-h-[540px]">
-        {/* Status Bar + Dynamic Island */}
-        <div className="px-5 pt-2.5 pb-1.5 flex items-center justify-between text-[10px] text-[#78716c]">
-          <span>9:41</span>
-          <div className="w-20 h-4 rounded-full bg-[#0d0b0a] border border-[#261e1a]" />
-          <span>100%</span>
-        </div>
+    <div className="relative mx-auto w-[306px] sm:w-[326px] select-none">
+      {/* Left Hardware Buttons (Action + Volume) */}
+      <div className="absolute -left-[3px] top-24 w-[3px] h-6 rounded-l-sm bg-gradient-to-b from-[#4a4038] to-[#261e1a]" />
+      <div className="absolute -left-[3px] top-36 w-[3px] h-11 rounded-l-sm bg-gradient-to-b from-[#4a4038] to-[#261e1a]" />
+      <div className="absolute -left-[3px] top-50 w-[3px] h-11 rounded-l-sm bg-gradient-to-b from-[#4a4038] to-[#261e1a]" />
+
+      {/* Right Hardware Button (Power) */}
+      <div className="absolute -right-[3px] top-40 w-[3px] h-16 rounded-r-sm bg-gradient-to-b from-[#4a4038] to-[#261e1a]" />
+
+      {/* Titanium Outer Chassis */}
+      <div className="rounded-[3rem] p-[3px] bg-gradient-to-b from-[#4a4039] via-[#1f1a17] to-[#342c26] shadow-[0_28px_70px_-15px_rgba(0,0,0,0.95),0_0_45px_-18px_rgba(217,119,6,0.22)]">
+        {/* Inner Black Bezel */}
+        <div className="rounded-[2.85rem] bg-[#050505] p-2.5 ring-1 ring-white/5">
+          {/* Inner OLED Display */}
+          <div className="relative rounded-[2.25rem] bg-black border border-[#1a1512] overflow-hidden flex flex-col min-h-[560px]">
+            {/* Subtle Ceramic Shield Glass Reflection */}
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-white/[0.018] to-white/[0.04] z-20" />
+
+            {/* Realistic Status Bar + Dynamic Island */}
+            <div className="relative z-10 px-5 pt-2.5 pb-1.5 flex items-center justify-between text-[10px] font-medium text-[#a8a29e]">
+              <span className="tracking-tight">9:41</span>
+
+              {/* Dynamic Island with Camera Lens */}
+              <div className="w-[88px] h-[22px] rounded-full bg-[#050505] border border-[#1f1a17] flex items-center justify-end px-2 shadow-inner">
+                <div className="w-2.5 h-2.5 rounded-full bg-[#0c1420] border border-[#1e293b] flex items-center justify-center">
+                  <div className="w-1 h-1 rounded-full bg-[#38bdf8]/40" />
+                </div>
+              </div>
+
+              {/* Signal + Wi-Fi + Battery */}
+              <div className="flex items-center gap-1.5">
+                <div className="flex items-end gap-[1.5px] h-2.5">
+                  <span className="w-[2px] h-1 bg-[#a8a29e] rounded-full" />
+                  <span className="w-[2px] h-1.5 bg-[#a8a29e] rounded-full" />
+                  <span className="w-[2px] h-2 bg-[#a8a29e] rounded-full" />
+                  <span className="w-[2px] h-2.5 bg-[#a8a29e] rounded-full" />
+                </div>
+                <div className="w-4 h-2 rounded-[3px] border border-[#78716c] p-[1px] flex items-center">
+                  <div className="w-full h-full bg-[#d4a373] rounded-[1px]" />
+                </div>
+              </div>
+            </div>
 
         {/* Mini App Header */}
         <div className="px-3.5 py-2 border-b border-[#1c1613] flex items-center justify-between">
@@ -395,7 +428,9 @@ export function MobileMockupFrame({
 
         {/* Home Indicator */}
         <div className="pb-2 pt-1 flex justify-center">
-          <div className="w-24 h-1 rounded-full bg-[#261e1a]" />
+          <div className="w-24 h-1 rounded-full bg-[#3a312b]" />
+        </div>
+          </div>
         </div>
       </div>
     </div>
