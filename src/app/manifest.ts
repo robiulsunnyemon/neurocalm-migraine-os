@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "NeuroCalm",
     description:
       "Photophobia-safe, offline-first migraine tracker with voice logging, threshold AI, and clinical PDF reports.",
-    start_url: "/",
+    start_url: "/log",
     display: "standalone",
     background_color: "#000000",
     theme_color: "#000000",
@@ -23,12 +23,12 @@ export default function manifest(): MetadataRoute.Manifest {
       {
         name: "Quick Attack Log",
         short_name: "Attack",
-        url: "/?quick=attack",
+        url: "/log?quick=attack",
       },
       {
         name: "Voice Log",
         short_name: "Voice",
-        url: "/?quick=voice",
+        url: "/log?quick=voice",
       },
     ],
   };

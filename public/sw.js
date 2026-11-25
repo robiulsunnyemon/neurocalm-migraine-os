@@ -1,5 +1,5 @@
 const CACHE_NAME = "neurocalm-v1";
-const STATIC_ASSETS = ["/", "/calendar", "/insights", "/report", "/icon.svg"];
+const STATIC_ASSETS = ["/", "/log", "/calendar", "/insights", "/report", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

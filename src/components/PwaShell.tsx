@@ -68,11 +68,15 @@ export function PwaShell({ children }: { children: React.ReactNode }) {
   }
 
   const navItems = [
-    { href: "/", label: "Log", icon: Mic },
+    { href: "/log", label: "Log", icon: Mic },
     { href: "/calendar", label: "Calendar", icon: Calendar },
     { href: "/insights", label: "Triggers", icon: Activity },
     { href: "/report", label: "Doctor PDF", icon: FileText },
   ];
+
+  if (pathname === "/") {
+    return <div className="min-h-screen bg-black text-[#e7d8c9]">{children}</div>;
+  }
 
   return (
     <div className="min-h-screen bg-black text-[#e7d8c9] flex flex-col pb-20">
